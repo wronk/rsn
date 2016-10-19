@@ -5,11 +5,9 @@ comp_connectivity_v1.py
 
 Compute connectivity metrics between RSN areas
 
-Handling voc_meg data: This code takes all auditory trials and stitchs them
-together into one long time-series before computing correlations. This isn't
-ideal as the time series will often jump to the start of the next trial.
-
-Output data is saved as (n_ROIs, n_freqs, n_times).
+Handling eric_voc data: This code computes connectivity on trials individually
+and does not splice them together prior to computing connectivity. It also
+crops trials to only the task portion of the epochs.
 """
 
 import os
@@ -39,18 +37,19 @@ struct_dir = os.environ['SUBJECTS_DIR']
 data_head = op.join(os.environ['CODE_ROOT'])
 
 # Choose to process resting data or task data
-#exp_heading = 'wronk_resting'
-exp_heading = 'eric_voc'
-
+exp_heading = 'wronk_resting'
+#exp_heading = 'eric_voc'
 
 if exp_heading == 'wronk_resting':
     data_dir = op.join(data_head, 'rsn_data')
-else:
+elif exp_heading == 'eric_voc':
     data_dir = op.join(data_head, 'voc_data')
     trial_types = ['M10_', 'M20_', 'S10_', 'S20_']
+else:
+    raise RuntimeError('Incorrect experimental heading')
 
 subj_nums = ['04', '07', '15', '17', '19', '20', '23', '31', '32', '34', '38']
-subj_nums = ['15']
+subj_nums = ['15', '17']
 
 conn_methods = config_conn_methods
 conn_params = config_conn_params
@@ -109,6 +108,42 @@ def tfr_split(label_activity):
 
     return power_arr
 
+
+def calc_corr(wavelet_ts, conn_params, mode):
+    """Helper to calculate correlation between power bands"""
+
+    blp_corr = np.zeros((wavelet_ts.shape[0], len(conn_params['conn_pairs'][0]),
+                         wavelet_ts.shape[2], wavelet_ts.shape[3]))
+
+    if mode == 'wronk_resting':
+        # Loop over each label pair
+        for match_i, (li_1, li_2) in enumerate(zip(conn_params['conn_pairs'][0],
+                                                   conn_params['conn_pairs'][1])):
+            # Calculate sliding correlation
+            for bp_i in range(wavelet_ts.shape[2]):
+                blp_corr[0, match_i, bp_i, :] = \
+                    rolling_corr(wavelet_ts[0, li_1, bp_i, :],
+                                 wavelet_ts[0, li_2, bp_i, :], window=corr_len)
+
+    elif mode == 'eric_voc':
+        blp_corr = np.zeros((wavelet_ts.shape[0], len(conn_params['conn_pairs'][0]),
+                             wavelet_ts.shape[2], wavelet_ts.shape[3]))
+        # Loop over each trial
+        for ti in range(wavelet_ts.shape[0]):
+            # Loop over each label pair
+            for match_i, (li_1, li_2) in enumerate(zip(conn_params['conn_pairs'][0],
+                                                       conn_params['conn_pairs'][1])):
+                # Loop over each power band
+                for bp_i in range(wavelet_ts.shape[2]):
+                    # Calculate sliding correlation
+                    blp_corr[ti, match_i, bp_i, :] = \
+                        rolling_corr(wavelet_ts[ti, li_1, bp_i, :],
+                                     wavelet_ts[ti, li_2, bp_i, :],
+                                     window=corr_len)
+    else:
+        raise RuntimeError('`mode` incorrect')
+
+    return blp_corr
 ###########################################################
 # Loop through each subject; load info, comp connectivity
 ###########################################################
@@ -125,9 +160,9 @@ for s_num in subj_nums:
                               (exp_heading, num_exp)))
 
     # Subselect only vocoder trials (and throw away visual control trials)
-    if exp_heading == 'voc_meg':
+    if exp_heading == 'eric_voc':
         epo = epo[trial_types]
-        #epo.crop(None, 5.2)  # Crop to end at last stimulus letter
+        epo.crop(None, 5.2)  # Crop to end at last stimulus letter
 
     # Generate source activity restricted to pre-defined RSN areas
     # XXX Using MEG only ERM inverse
@@ -160,7 +195,6 @@ for s_num in subj_nums:
                                    mode=conn_params['mean_mode'],
                                    verbose=False))
 
-    import ipdb; ipdb.set_trace()
     ###########################################################
     # Compute connectivity between RSN regions for each subject
     ###########################################################
@@ -172,26 +206,22 @@ for s_num in subj_nums:
         # Compute TFR of power bands
             # wavelet_ts is (n_stc, n_lab, n_freq, n_times)
         wavelet_ts = tfr_split(label_activity)
-
-        # Reshape to concatenate data from all epochs into one long time trace
-        wavelet_ts = wavelet_ts.reshape(1, label_activity.shape[1],
-                                        len(conn_dict['cwt_frequencies']),
-                                        (label_activity.shape[0] *
-                                            label_activity.shape[2]))
-        power_data.append(wavelet_ts)
-
-        # Calculate sliding correlation window using pandas.rolling_corr
         corr_len = int(conn_dict['corr_wind'] * epo.info['sfreq'])
-        blp_corr = np.zeros((len(conn_params['conn_pairs'][0]),
-                             wavelet_ts.shape[2],
-                             wavelet_ts.shape[3]))
 
-        for match_i, (li_1, li_2) in enumerate(zip(conn_params['conn_pairs'][0],
-                                                   conn_params['conn_pairs'][1])):
-            for bp_i in range(wavelet_ts.shape[2]):
-                blp_corr[match_i, bp_i] = \
-                    rolling_corr(wavelet_ts[0, li_1, bp_i, :],
-                                 wavelet_ts[0, li_2, bp_i, :], window=corr_len)
+        if exp_heading == 'wronk_resting':
+            # Reshape all stc ROI data into long time traces
+            wavelet_ts = np.rollaxis(wavelet_ts, 0, 3)
+            wavelet_ts = wavelet_ts.reshape(1, wavelet_ts.shape[0],
+                                            wavelet_ts.shape[1],
+                                            (wavelet_ts.shape[2] *
+                                             wavelet_ts.shape[3]))
+            blp_corr = calc_corr(wavelet_ts, conn_params, exp_heading)
+
+        elif exp_heading == 'eric_voc':
+            blp_corr = calc_corr(wavelet_ts, conn_params, exp_heading)
+
+        # Store raw power data
+        #power_data.append(wavelet_ts)
 
         conn_data.append(blp_corr)  # Store only connectivity traces
 
