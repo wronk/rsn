@@ -11,6 +11,7 @@ import numpy as np
 
 import mne
 import mnefun
+import config
 
 # use niprove for handling events if possible
 try:
@@ -20,11 +21,8 @@ except ImportError:
     handler = None
 
 data_dir = op.join(os.environ['CODE_ROOT'], 'rsn_data')
-# 019 had bounced 1 triggers in original experiment.
-# 020 had bad pupillometry, and the first run had a TTL issue
-# 007 had bad pupillometry; All epochs rejected
-# 022, 004 had droopy pupillometry
-subj_nums = [15, 17, 19, 23, 31, 32, 34, 38]
+
+subj_nums = config.subj_nums
 subj_nums = [17]
 epo_len = 1
 debug = False
@@ -32,8 +30,6 @@ debug = False
 #######################################
 # Construct subject information
 #######################################
-
-data_dir = '/media/Toshiba/Code/rsn_data/'
 
 # Create a cropped version of data just for faster debugging
 for subj_num in subj_nums:
