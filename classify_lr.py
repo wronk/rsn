@@ -13,14 +13,13 @@ import csv
 from itertools import product
 import numpy as np
 from numpy.random import choice
+from time import strftime
 
 import tensorflow as tf
 
-import matplotlib as mpl
-from matplotlib import pyplot as plt
-
 import config
 from config import config_conn_methods, config_conn_params
+import cPickle
 
 ################
 # Define globals
@@ -34,24 +33,29 @@ seed = None
 trial_len = 241
 n_features = 40 * 241
 
-l1_weights = [10 ** x for x in range(-3, 1)]
-l2_weights = [10 ** x for x in range(-3, 1)]
+l1_weights = [10 ** x for x in range(-5, 2)]
+l2_weights = [10 ** x for x in range(-5, 2)]
 
 # Training params
 n_classes = 2
-testing_prop = 0.5  # Proportion of data saved for testing
-batch_sizes = [20, 50, 100, 200]
-n_training_batches = 3000
+testing_prop = 0.2  # Proportion of data saved for testing
+batch_sizes = [10, 20, 50, 100, 200]
+n_training_batches = 5000
 n_repeats = 10
+test_freq = 50  # Evaluate test data every n batches
 
 subj_nums = config.subj_nums
 subj_nums = ['15', '17']
 
-hyper_params = [l1_weights, l2_weights, batch_sizes, range(n_repeats)]
+hyper_param_desc = '(Subjects), batch_sizes, l1_weights, l2_weights, range(n_repeats)'
+hyper_params = [batch_sizes, l1_weights, l2_weights, range(n_repeats)]
 hyper_param_shape = [len(temp_list) for temp_list in hyper_params]
 hyper_param_inds = [range(si) for si in hyper_param_shape]
 
 class_scores = np.zeros([len(subj_nums)] + hyper_param_shape)
+
+print 'Started processing @ ' + strftime("%d/%m %H:%M:%S")
+print 'Hyper params:\n' + str(hyper_params)
 
 
 def weight_variable(shape, name):
@@ -299,13 +303,14 @@ for si, s_num in enumerate(subj_nums):
     #train_writer = tf.train.SummaryWriter('./train_summaries_%s' % s_num_exp,
     #                                      sess.graph)
 
-    for hpi, hype_param_set in zip(list(product(*hyper_param_inds)),
-                                   list(product(*hyper_params))):
+    for hpi, hp_set in zip(list(product(*hyper_param_inds)),
+                           list(product(*hyper_params))):
         sess = tf.Session()
         sess.run(init_op)
 
-        print 'Hyper param set: %s' % str(hpi)
-        batch_size = hype_param_set[2]
+        print 'Subj: %i/%i, Hyper param set: %s' % (si, len(subj_nums) - 1,
+                                                    str(hpi))
+        batch_size = hp_set[0]
         test_accuracies = []
 
         # Get new data fold
@@ -331,12 +336,12 @@ for si, s_num in enumerate(subj_nums):
 
             feed_dict = {x_data: batch_x,
                          y_: batch_y,
-                         l1l2_weights: [hype_param_set[0], hype_param_set[1]]}
+                         l1l2_weights: [hp_set[1], hp_set[2]]}
 
             # Save summaries for tensorboard every 10 steps
             _, acc = sess.run([train_op, accuracy], feed_dict)
 
-            if ind % 50 == 0 or ind == n_training_batches - 1:
+            if ind % test_freq == 0 or ind == n_training_batches - 1:
                 test_feed_dict = {x_data: test_x, y_: test_y}
                 test_accuracies.append(accuracy.eval(session=sess,
                                                      feed_dict=test_feed_dict))
@@ -348,5 +353,22 @@ for si, s_num in enumerate(subj_nums):
 
         sess.close()
 
-# Save results
+print 'Finished processing @ ' + strftime("%d/%m %H:%M:%S")
 
+# Save results
+if save_data:
+    date_str = strftime('%Y_%m_%d__%H_%M')
+    save_dict = dict(class_scores=class_scores,
+                     hyper_params=hyper_params,
+                     hyper_param_desc=hyper_param_desc,
+                     subj_nums=subj_nums,
+                     testing_proportion=testing_prop,
+                     n_training_batchs=n_training_batches,
+                     trial_len=trial_len,
+                     n_features=n_features,
+                     time_finished=date_str)
+
+    fname_scores_pkl = op.join(data_head, 'rsn_results', 'lr_scores_' +
+                               date_str + '.pkl')
+    with open(fname_scores_pkl, 'wb') as pkl_file:
+        cPickle.dump(save_dict, pkl_file)
