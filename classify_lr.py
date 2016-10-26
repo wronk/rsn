@@ -10,6 +10,7 @@ import os
 import os.path as op
 import cPickle
 import csv
+from itertools import product
 import numpy as np
 from numpy.random import choice
 
@@ -33,19 +34,24 @@ seed = None
 trial_len = 241
 n_features = 40 * 241
 
-l1_w, l2_w = 0.001, 0.02
-#l1_w, l2_w = 0.005, 0.01
+l1_weights = [10 ** x for x in range(-3, 1)]
+l2_weights = [10 ** x for x in range(-3, 1)]
 
 # Training params
 n_classes = 2
-training_prop = 0.75
-batch_size = 100
-n_training_batches = 1500
+testing_prop = 0.5  # Proportion of data saved for testing
+batch_sizes = [20, 50, 100, 200]
+n_training_batches = 3000
+n_repeats = 10
 
 subj_nums = config.subj_nums
 subj_nums = ['15', '17']
 
-test_accuracies = []
+hyper_params = [l1_weights, l2_weights, batch_sizes, range(n_repeats)]
+hyper_param_shape = [len(temp_list) for temp_list in hyper_params]
+hyper_param_inds = [range(si) for si in hyper_param_shape]
+
+class_scores = np.zeros([len(subj_nums)] + hyper_param_shape)
 
 
 def weight_variable(shape, name):
@@ -99,12 +105,12 @@ def get_training_batch(data, n_trials, seed=None):
     return data[rand_inds, :, :].reshape((n_trials, -1))
 
 
-def load_rest_exp_data(num_exp):
+def load_data(num_exp):
     """Load and return both voc_meg and resting state data"""
 
     # Construct directory paths to two datasets
-    data_dirs = [op.join(data_head, exp) for exp in ['voc_data', 'rsn_data']]
-    exp_headings = ['eric_voc', 'wronk_resting']
+    data_dirs = [op.join(data_head, exp) for exp in ['rsn_data', 'voc_data']]
+    exp_headings = ['wronk_resting', 'eric_voc']
 
     # Load both connectivity datasets
     data_list = []
@@ -118,10 +124,18 @@ def load_rest_exp_data(num_exp):
             data_list.append(cPickle.load(pkl_obj))
 
     assert len(data_list) is 2, "Both datasets not loaded"
-    return (data_list[0], data_list[1])
+
+    ######################
+    # Create trials
+    ######################
+    data_rest, n_feat_rest = clean_data(data_list[0]['conn_data'][0], 'wronk_resting')
+    data_task, n_feat_task = clean_data(data_list[1]['conn_data'][0], 'eric_voc')
+    assert n_feat_rest == n_feat_task, "n_features doesn't match in rest/task"
+
+    return data_rest, data_task
 
 
-def preprocess_data(data, mode):
+def clean_data(data, mode):
     """Helper to reshape and normalize data"""
 
     # XXX Looked good when double checking data reshaping
@@ -138,11 +152,9 @@ def preprocess_data(data, mode):
 
     # Roll axis so frequencies will be grouped together after reshape
     trial_vecs = np.rollaxis(trial_images, 2, 1)
-    # Reshape trials into 1D vectors and normalize pixels
+    # Reshape trials into 1D vectors and normalize
     trial_vecs = trial_vecs.reshape(trial_vecs.shape[0], -1,
                                     trial_vecs.shape[3])
-    #trial_vecs = trial_images.reshape(trial_images.shape[0], -1,
-    #                                  trial_images.shape[3])
     trial_vecs = trial_vecs + np.abs(np.min(trial_vecs))
     trial_vecs = trial_vecs / np.max(trial_vecs)
 
@@ -206,51 +218,43 @@ def cut_trials_task(data):
     return trial_data
 
 
-def get_training_test_data(subj_num):
+def get_training_test_data(trials_rest_im, trials_task_im):
     """Load data, split into training and test sets"""
-    conn_task, conn_rest = load_rest_exp_data(subj_num)
-
-    ######################
-    # Create training data
-    ######################
-    # TODO: Figure out better way to divide data into trials respecting trial timing
-    # Naively split data into trials, set aside test data
-    trials_rest_im, n_feat_rest = preprocess_data(conn_rest['conn_data'][0], 'wronk_resting')
-    trials_task_im, n_feat_task = preprocess_data(conn_task['conn_data'][0], 'eric_voc')
-    assert n_feat_rest == n_feat_task, "n_features doesn't match in rest/task"
-
     ##################
     # Create test data
     ##################
     # Equalize test trial count
-    min_trials = np.min([np.ceil(training_prop * trials_rest_im.shape[0]),
-                         np.ceil(training_prop * trials_task_im.shape[0])])
+    min_trials = int(np.min([np.ceil(testing_prop * trials_rest_im.shape[0]),
+                             np.ceil(testing_prop * trials_task_im.shape[0])]))
 
+    # Create training and testing trial indices
     np.random.seed(seed)
     test_inds_rest = choice(range(trials_rest_im.shape[0]), min_trials,
                             replace=False)
     test_inds_task = choice(range(trials_task_im.shape[0]), min_trials,
                             replace=False)
 
-    test_rest = trials_rest_im[test_inds_rest, :, :]
-    test_task = trials_task_im[test_inds_task, :, :]
+    train_inds_rest = [x for x in range(trials_rest_im.shape[0]) if x not in test_inds_rest]
+    train_inds_task = [x for x in range(trials_task_im.shape[0]) if x not in test_inds_task]
 
-    # Delete rows used as test data
-    trials_rest_im = np.delete(trials_rest_im, test_inds_rest, axis=0)
-    trials_task_im = np.delete(trials_task_im, test_inds_task, axis=0)
+    # Seperate training and test trials
+    train_rest = trials_rest_im[train_inds_rest]
+    train_task = trials_task_im[train_inds_task]
+
+    test_rest = trials_rest_im[test_inds_rest]
+    test_task = trials_task_im[test_inds_task]
 
     test_x = np.concatenate((test_rest, test_task))
     test_x = test_x.reshape((test_x.shape[0], -1))
     test_y = np.concatenate((np.zeros(test_rest.shape[0], dtype=int),
                              np.ones(test_task.shape[0], dtype=int)))
 
-    return trials_rest_im, trials_task_im, test_x, test_y
+    return train_rest, train_task, test_x, test_y
 
 
 ###########################################################
 # Loop through each subject; load connectivity; predict
 ###########################################################
-sess = tf.Session()
 
 x_data, y_pred, weights, biases = create_model(n_features)
 y_ = tf.placeholder(tf.int64, shape=[None], name='y_')
@@ -273,93 +277,76 @@ tf.scalar_summary('l1l2_loss', l1l2_loss)
 tf.scalar_summary('accuracy', accuracy)
 merged_summaries = tf.merge_all_summaries()
 
+init_op = tf.initialize_all_variables()
+
+
 print '\nLoading pickled data'
-for s_num in subj_nums:
+for si, s_num in enumerate(subj_nums):
     s_num_exp = '0%s' % s_num
     s_name = 'AKCLEE_1' + s_num
-    print '\nProcessing: ' + s_name
+    print '\nProcessing: %s\n' % s_name
 
     ##########################
     # Load and preprocess data
     ##########################
-    train_x_rest, train_x_task, test_x, test_y = \
-        get_training_test_data(s_num_exp)
-    # Load dicts of data for each experiment type
-    if np.any(np.isnan(train_x_rest)) or np.any(np.isnan(train_x_task)):
-        raise ValueError('NaNs in input')
-
-    print 'Rest data, %i total trials.' % (train_x_rest.shape[0])
-    print 'Task data, %i total trials.' % (train_x_task.shape[0])
+    all_data_rest, all_data_task = load_data(s_num_exp)
 
     ##################
     # Create TF model
     ##################
 
     #saver = tf.train.Saver()  # create saver for saving network weights
-    init = tf.initialize_all_variables()
-    train_writer = tf.train.SummaryWriter('./train_summaries_%s' % s_num_exp,
-                                          sess.graph)
-    sess.run(init)
+    #train_writer = tf.train.SummaryWriter('./train_summaries_%s' % s_num_exp,
+    #                                      sess.graph)
 
-    #########################
-    # Train and predict
-    #########################
-    for ind in range(n_training_batches):
+    for hpi, hype_param_set in zip(list(product(*hyper_param_inds)),
+                                   list(product(*hyper_params))):
+        sess = tf.Session()
+        sess.run(init_op)
 
-        batch_rest = get_training_batch(train_x_rest, batch_size / 2)
-        batch_task = get_training_batch(train_x_task, batch_size / 2)
-        batch_x = np.concatenate((batch_rest, batch_task))
+        print 'Hyper param set: %s' % str(hpi)
+        batch_size = hype_param_set[2]
+        test_accuracies = []
 
-        batch_y = np.concatenate((np.zeros(batch_size / 2, dtype=int),
-                                  np.ones(batch_size / 2, dtype=int)))
+        # Get new data fold
+        train_x_rest, train_x_task, test_x, test_y = \
+            get_training_test_data(all_data_rest, all_data_task)
 
-        assert len(np.unique(batch_y)) == n_classes, \
-            "Number of classes must match n_classes"
+        # Check for any nans in the new data slices
+        if np.any(np.isnan(train_x_rest)) or np.any(np.isnan(train_x_task)) \
+           or np.any(np.isnan(test_x)) or np.any(np.isnan(test_y)):
+            raise ValueError('NaNs in training and/or test data')
 
-        # TODO: add loss weight parameters as placeholders
-        feed_dict = {x_data: batch_x, y_: batch_y, l1l2_weights: [l1_w, l2_w]}
+        #########################
+        # Train and predict
+        #########################
+        for ind in range(n_training_batches):
 
-        # Save summaries for tensorboard every 10 steps
-        if ind % 10 == 0:
-            _, obj1, obj2, acc, summary = sess.run([train_op, pred_loss,
-                                                    l1l2_loss, accuracy,
-                                                    merged_summaries],
-                                                   feed_dict)
-            train_writer.add_summary(summary, ind)
-            print("\titer: %03d, pred_loss: %.2f, l1l2_loss: %.2f, acc: %.2f" %
-                  (ind, obj1, obj2, acc))
+            batch_rest = get_training_batch(train_x_rest, batch_size / 2)
+            batch_task = get_training_batch(train_x_task, batch_size / 2)
+            batch_x = np.concatenate((batch_rest, batch_task))
 
-        else:
-            _, obj1, obj2 = sess.run([train_op, pred_loss, l1l2_loss],
-                                     feed_dict)
+            batch_y = np.concatenate((np.zeros(batch_size / 2, dtype=int),
+                                      np.ones(batch_size / 2, dtype=int)))
 
-        if ind % 100 == 0 or ind == n_training_batches - 1:
-            test_feed_dict = {x_data: test_x, y_: test_y}
-            test_accuracies.append(accuracy.eval(session=sess,
-                                                 feed_dict=test_feed_dict))
-            print("Test accuracy: %.2f" % test_accuracies[-1])
+            feed_dict = {x_data: batch_x,
+                         y_: batch_y,
+                         l1l2_weights: [hype_param_set[0], hype_param_set[1]]}
 
-    '''
-    ### Save results
-    # Check if save directory exists (and create it if necessary)
-    save_dir = op.join(data_dir, '%s_%s' % (exp_heading, s_num_exp),
-                       'connectivity_plots')
-    if not os.path.isdir(save_dir):
-        os.mkdir(save_dir)
-    '''
+            # Save summaries for tensorboard every 10 steps
+            _, acc = sess.run([train_op, accuracy], feed_dict)
 
-    test_accuracies.sort(reverse=True)
-    avg_acc = np.mean(test_accuracies)
+            if ind % 50 == 0 or ind == n_training_batches - 1:
+                test_feed_dict = {x_data: test_x, y_: test_y}
+                test_accuracies.append(accuracy.eval(session=sess,
+                                                     feed_dict=test_feed_dict))
 
-    print 'Analysis complete.'
-    print 'Top 5 accuracies = %s' % str(test_accuracies[:5])
-    print 'Average = %s' % str(avg_acc)
+        test_accuracies.sort(reverse=True)
+        class_scores[si, hpi[0], hpi[1], hpi[2], hpi[3]] = test_accuracies[0]
 
-    with open('./train_summaries_%s/class_perf_lr.csv' % s_num_exp,
-              'a') as class_perf_file:
-        row = [batch_size] + [n_training_batches] + subj_nums + \
-            test_accuracies[:3] + [avg_acc]
-        writer = csv.writer(class_perf_file)
-        writer.writerow(row)
+        print '  Top 5 accuracies = %s' % str(test_accuracies[:5])
 
-sess.close()
+        sess.close()
+
+# Save results
+
