@@ -24,28 +24,31 @@ import cPickle
 ################
 # Define globals
 ################
-save_data = True  # Whether or not to pickle data
+use_shuffled = True  # Whether or not to load randomly shuffled data
+save_data = True  # Whether or not to pickle classification results
 
-struct_dir = os.environ['SUBJECTS_DIR']
-data_head = op.join(os.environ['CODE_ROOT'])
+data_head = op.join(os.environ['RSN_DATA_DIR'])
 
 seed = None
 trial_len = 241
 n_features = 40 * 241
 
-l1_weights = [10 ** x for x in range(-5, 2)]
-l2_weights = [10 ** x for x in range(-5, 2)]
+l1_weights = [10 ** x for x in range(-5, 0)]
+l2_weights = [10 ** x for x in range(-3, 1)]
 
 # Training params
 n_classes = 2
 testing_prop = 0.2  # Proportion of data saved for testing
-batch_sizes = [10, 20, 50, 100, 200]
+batch_sizes = [20, 50]
 n_training_batches = 5000
-n_repeats = 10
-test_freq = 50  # Evaluate test data every n batches
+n_repeats = 20
+test_freq = 100  # Evaluate test data every n batches
+
+trial_start_samp = [120, 434]  # Rest, task trial start times in samples
+#trial_start_samp = [120, 120]  # Rest, task trial start times in samples
 
 subj_nums = config.subj_nums
-subj_nums = ['15', '17']
+#subj_nums = [17]
 
 hyper_param_desc = '(Subjects), batch_sizes, l1_weights, l2_weights, range(n_repeats)'
 hyper_params = [batch_sizes, l1_weights, l2_weights, range(n_repeats)]
@@ -56,6 +59,7 @@ class_scores = np.zeros([len(subj_nums)] + hyper_param_shape)
 
 print 'Started processing @ ' + strftime("%d/%m %H:%M:%S")
 print 'Hyper params:\n' + str(hyper_params)
+print 'Shuffled: ' + str(use_shuffled)
 
 
 def weight_variable(shape, name):
@@ -120,9 +124,12 @@ def load_data(num_exp):
     data_list = []
     for data_dir, exp_heading in zip(data_dirs, exp_headings):
 
-        load_dir = op.join(data_dir, '%s_%s' % (exp_heading, num_exp),
-                           'connectivity')
-        load_file = op.join(load_dir, 'conn_results_%s.pkl' % exp_heading)
+        # Change filename slightly if using shuffled data
+        shuffle_add = 'shuffled_' if use_shuffled else ''
+
+        load_dir = op.join(data_dir, '%s_connectivity' % exp_heading)
+        load_file = op.join(load_dir, 'conn_results_%s%s_%s.pkl' % (
+            shuffle_add, exp_heading, num_exp))
 
         with open(load_file, 'rb') as pkl_obj:
             data_list.append(cPickle.load(pkl_obj))
@@ -176,7 +183,7 @@ def cut_trials_rest(data):
 
     # Exclude first 0.5 sec (120 time points) as cross corr function
     # (w/ 0.5 sec window) evaluates to nans here
-    data_no_nans = data[:, :, :, 120:]
+    data_no_nans = data[:, :, :, trial_start_samp[0]:]
 
     n_trials = data_no_nans.shape[3] // trial_len
 
@@ -200,8 +207,7 @@ def cut_trials_task(data):
     # Exclude first 1.8 sec (-0.2-1.6; 434 time points) as actual task where
     # subject must start listening listen for 6 target letters starts at 1.6
     # seconds
-    #data_no_nans = data[:, :, :, 120:]
-    data_no_nans = data[:, :, :, 434:]
+    data_no_nans = data[:, :, :, trial_start_samp[1]:]
 
     # Compute number of segments for classification (w/ len trial_len) from
     # experimental trials.
@@ -286,8 +292,8 @@ init_op = tf.initialize_all_variables()
 
 print '\nLoading pickled data'
 for si, s_num in enumerate(subj_nums):
-    s_num_exp = '0%s' % s_num
-    s_name = 'AKCLEE_1' + s_num
+    s_num_exp = '0%02i' % s_num
+    s_name = 'AKCLEE_1%02i' % s_num
     print '\nProcessing: %s\n' % s_name
 
     ##########################
@@ -345,19 +351,23 @@ for si, s_num in enumerate(subj_nums):
                 test_feed_dict = {x_data: test_x, y_: test_y}
                 test_accuracies.append(accuracy.eval(session=sess,
                                                      feed_dict=test_feed_dict))
+                print 'Test accuracy on loop %04i: %0.2f' % (ind, test_accuracies[-1])
 
         test_accuracies.sort(reverse=True)
-        class_scores[si, hpi[0], hpi[1], hpi[2], hpi[3]] = test_accuracies[0]
+        class_scores[si, hpi[0], hpi[1], hpi[2], hpi[3]] = \
+            np.mean(test_accuracies[:10])
 
         print '  Top 5 accuracies = %s' % str(test_accuracies[:5])
 
         sess.close()
 
-print 'Finished processing @ ' + strftime("%d/%m %H:%M:%S")
+print 'Finished processing @ ' + strftime("%m/%d %H:%M:%S")
 
 # Save results
 if save_data:
     date_str = strftime('%Y_%m_%d__%H_%M')
+    shuffled_add = '_shuffled' if use_shuffled else ''
+
     save_dict = dict(class_scores=class_scores,
                      hyper_params=hyper_params,
                      hyper_param_desc=hyper_param_desc,
@@ -369,6 +379,6 @@ if save_data:
                      time_finished=date_str)
 
     fname_scores_pkl = op.join(data_head, 'rsn_results', 'lr_scores_' +
-                               date_str + '.pkl')
+                               date_str + shuffled_add + '.pkl')
     with open(fname_scores_pkl, 'wb') as pkl_file:
         cPickle.dump(save_dict, pkl_file)
