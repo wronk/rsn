@@ -1,5 +1,5 @@
 """
-comp_connectivity_v1.py
+comp_connectivity.py
 
 @author: wronk
 
@@ -33,24 +33,17 @@ from config import config_conn_methods, config_conn_params
 # Define globals
 ################
 save_data = True  # Whether or not to pickle data
+shuffle_data = True  # Whether or not to shuffle data in time (as a control)
 
 struct_dir = os.environ['SUBJECTS_DIR']
 data_head = op.join(os.environ['CODE_ROOT'])
 
 # Choose to process resting data or task data
-exp_heading = 'wronk_resting'
-#exp_heading = 'eric_voc'
+#exp_heading = 'wronk_resting'
+exp_heading = 'eric_voc'
 
-if exp_heading == 'wronk_resting':
-    data_dir = op.join(data_head, 'rsn_data')
-elif exp_heading == 'eric_voc':
-    data_dir = op.join(data_head, 'voc_data')
-    trial_types = ['M10_', 'M20_', 'S10_', 'S20_']
-else:
-    raise RuntimeError('Incorrect experimental heading')
-
-subj_nums = config.subj_nums
-subj_nums = ['15', '17']
+subj_nums = [str(num) for num in config.subj_nums]
+#subj_nums = ['15', '17']
 inv_lam = config.inv_lambda
 
 conn_methods = config_conn_methods
@@ -144,25 +137,37 @@ def calc_corr(wavelet_ts, conn_params, mode):
         raise RuntimeError('`mode` incorrect')
 
     return blp_corr
+
+########################
+# Set up a few variables
+########################
+
+if exp_heading == 'wronk_resting':
+    data_dir = op.join(data_head, 'rsn_data')
+elif exp_heading == 'eric_voc':
+    data_dir = op.join(data_head, 'voc_data')
+    trial_types = ['M10_', 'M20_', 'S10_', 'S20_']
+else:
+    raise RuntimeError('Incorrect experimental heading')
+
 ###########################################################
 # Loop through each subject; load info, comp connectivity
 ###########################################################
+print '\nShuffle data: ' + str(shuffle_data)
+print 'Subjects: ' + str(subj_nums) + '\n'
 
 for s_num in subj_nums:
     num_exp = '0%s' % s_num
     s_name = 'AKCLEE_1' + s_num
-    print '\nProcessing: ' + s_name
 
-    print '\n\tLoading epo, inv, src, labels'
+    print '\n%s\nProcessing: %s\n' % ('=' * 40, s_name)
+    print '\tLoading epo, inv, src, labels'
+
     # Load Epochs
     epo = read_epochs(op.join(data_dir, '%s_%s' % (exp_heading, num_exp),
                               'epochs', 'All_55-sss_%s_%s-epo.fif' %
                               (exp_heading, num_exp)))
-
-    # Subselect only vocoder trials (and throw away visual control trials)
-    if exp_heading == 'eric_voc':
-        epo = epo[trial_types]
-        epo.crop(None, 5.2)  # Crop to end at last stimulus letter
+    epo.pick_types(meg=True, eeg=True)
 
     # Generate source activity restricted to pre-defined RSN areas
     # XXX Using MEG only ERM inverse
@@ -173,6 +178,18 @@ for s_num in subj_nums:
 
     # XXX: 'src' object in structs_dir doesn't match src file in `struct_dir`
     src = inv['src']
+
+    # Subselect only vocoder trials (and throw away visual control trials)
+    if exp_heading == 'eric_voc':
+        epo = epo[trial_types]
+        epo.crop(None, 5.2)  # Crop to end at last stimulus letter
+
+    # Randomly (and independently) shuffle time axis of epochs data
+    if shuffle_data:
+        print '\tShuffling data'
+        for t_i in range(epo._data.shape[0]):
+            for c_i in range(epo._data.shape[1]):
+                epo._data[t_i, c_i, :] = epo._data[t_i, c_i, np.random.permutation(epo._data.shape[2])]
 
     print '\n\tLoading RSN label info'
     # Get list of labels and vertices
@@ -232,19 +249,20 @@ for s_num in subj_nums:
     if save_data:
 
         # Check if save directory exists (and create it if necessary)
-        save_dir = op.join(data_dir, '%s_%s' % (exp_heading, num_exp),
-                           'connectivity')
+        save_dir = op.join(data_dir, '%s_connectivity' % (exp_heading))
         if not os.path.isdir(save_dir):
             os.mkdir(save_dir)
 
         # Save results as pkl file
-        save_file = op.join(save_dir, 'conn_results_%s.pkl' % exp_heading)
+        shuf_addition = 'shuffled_' if shuffle_data else ''
+        save_file = op.join(save_dir, 'conn_results_%s%s_%s.pkl' % (
+            shuf_addition, exp_heading, num_exp))
         with open(save_file, 'wb') as pkl_obj:
             results_to_save = deepcopy(conn_params)
             results_to_save['conn_data'] = conn_data
             #results_to_save['power_data'] = power_data
             results_to_save['conn_data_shape'] = \
-                'n_label_pairs, n_freqs, n_times'
+                'n_trials, n_label_pairs, n_freqs, n_times'
             results_to_save['sfreq'] = epo.info['sfreq']
 
             cPickle.dump(results_to_save, pkl_obj)
