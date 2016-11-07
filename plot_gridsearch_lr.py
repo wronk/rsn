@@ -15,17 +15,18 @@ import matplotlib as mpl
 from matplotlib import pyplot as plt
 
 import cPickle
+from time import strftime
 
 ################
 # Define globals
 ################
-save_data = True  # Whether or not to pickle data
+save_plot = True  # Whether or not to pickle data
 
 struct_dir = os.environ['SUBJECTS_DIR']
 data_head = op.join(os.environ['CODE_ROOT'])
 saved_data_dir = op.join(data_head, 'rsn_results')
 
-file_name = 'lr_scores_2016_10_28__21_07.pkl'
+file_name = 'lr_scores_2016_11_07__10_47.pkl'
 
 ###################
 # Load pickled data
@@ -93,3 +94,11 @@ cbar.ax.get_yaxis().labelpad = 15
 cbar.set_label('% Accuracy', rotation=270)
 
 plt.show()
+
+if save_plot:
+    time_str = strftime('%Y_%m_%d__%H_%M')
+    save_fname = op.join(saved_data_dir, 'lr_gridsearch',
+                         'lr_plot_%02i_subjs_%s' % (cls_shape[0], time_str))
+
+    fig1.savefig(save_fname + '.png')
+    fig1.savefig(save_fname + '.pdf')
