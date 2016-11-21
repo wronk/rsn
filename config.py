@@ -64,3 +64,10 @@ config_conn_params = dict(conn_pairs=(np.array([3, 3, 3, 5, 10, 10, 10, 12]),
                           mean_mode='mean_flip',
                           n_jobs=6,
                           verbose=True)
+
+SVM_PARAMS = dict(C_range=[10. ** x for x in range(-6, 4)],
+                  g_range=[10. ** x for x in range(-6, 3)],
+                  n_folds=5,
+                  kernel='rbf',
+                  n_repeats=5,
+                  cache_size=4096)  # Cache size for SVM training
