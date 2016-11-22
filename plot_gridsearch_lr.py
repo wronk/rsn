@@ -21,12 +21,15 @@ from time import strftime
 # Define globals
 ################
 save_plot = True  # Whether or not to pickle data
+shuffled = False
 
 struct_dir = os.environ['SUBJECTS_DIR']
 data_head = op.join(os.environ['CODE_ROOT'])
 saved_data_dir = op.join(data_head, 'rsn_results')
 
-file_name = 'lr_scores_2016_11_07__10_47.pkl'
+shuffled_add = '_shuffled' if shuffled else ''
+file_name = 'lr_scores_2016_11_13__13_07%s.pkl' % shuffled_add
+#file_name = 'lr_scores_2016_11_12__08_18%s.pkl' % shuffled_add
 
 ###################
 # Load pickled data
@@ -53,11 +56,13 @@ hyp_p = result_dict['hyper_params']
 ###################
 plt.ion()
 
-fig1, axes1 = plt.subplots(cls_shape[0], cls_shape[1], figsize=(14, 6.5),
+fig1, axes1 = plt.subplots(cls_shape[0], cls_shape[1], figsize=(7.5, 14),
                            sharex=True, sharey=True)
+if len(axes1.shape) == 1:
+    axes1 = axes1[:, np.newaxis]
 
 #vmin, vmax = np.min(cls_arr), np.max(cls_arr)
-vmin, vmax = 50., np.max(cls_arr)
+vmin, vmax = 50., 60
 cmap = plt.get_cmap('viridis')
 
 for ind_2d in list(product(*[range(cls_shape[0]), range(cls_shape[1])])):
@@ -96,9 +101,10 @@ cbar.set_label('% Accuracy', rotation=270)
 plt.show()
 
 if save_plot:
-    time_str = strftime('%Y_%m_%d__%H_%M')
     save_fname = op.join(saved_data_dir, 'lr_gridsearch',
-                         'lr_plot_%02i_subjs_%s' % (cls_shape[0], time_str))
+                         'lr_plot_%02i_subjs_%s%s' % (cls_shape[0],
+                                                      result_dict['time_finished'],
+                                                      shuffled_add))
 
     fig1.savefig(save_fname + '.png')
     fig1.savefig(save_fname + '.pdf')
