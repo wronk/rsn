@@ -21,10 +21,11 @@ import config
 from config import config_conn_methods, config_conn_params
 import cPickle
 
+tf.logging.set_verbosity(tf.logging.INFO)
 ################
 # Define globals
 ################
-use_shuffled = True  # Whether or not to load randomly shuffled data
+use_shuffled = False  # Whether or not to load randomly shuffled data
 save_data = True  # Whether or not to pickle classification results
 
 data_head = op.join(os.environ['RSN_DATA_DIR'])
@@ -33,14 +34,14 @@ seed = None
 trial_len = 241
 n_features = 40 * 241
 
-l1_weights = [10 ** x for x in range(-5, 0)]
-l2_weights = [10 ** x for x in range(-3, 1)]
+l1_weights = [10 ** x for x in range(-7, 0)]
+l2_weights = [10 ** x for x in range(-5, 2)]
 
 # Training params
 n_classes = 2
 testing_prop = 0.2  # Proportion of data saved for testing
-batch_sizes = [20, 50]
-n_training_batches = 5000
+batch_sizes = [50]
+n_training_batches = 1500
 n_repeats = 20
 test_freq = 100  # Evaluate test data every n batches
 
@@ -75,7 +76,8 @@ def l1_norm(tensor):
 
 
 def l2_norm(tensor):
-    return tf.sqrt(tf.reduce_sum(tf.square(tensor)))
+    #return tf.sqrt(tf.reduce_sum(tf.square(tensor)))  # True L2 norm
+    return tf.nn.l2_loss(tensor)  # TF L2 is sum of elements squared divided by 2
 
 
 def create_model(n_features):
@@ -282,10 +284,10 @@ correct_prediction = tf.equal(tf.arg_max(y_pred, 1), y_)
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
 # Attach summaries
-tf.scalar_summary('prediction loss', pred_loss)
-tf.scalar_summary('l1l2_loss', l1l2_loss)
-tf.scalar_summary('accuracy', accuracy)
-merged_summaries = tf.merge_all_summaries()
+#tf.scalar_summary('prediction loss', pred_loss)
+#tf.scalar_summary('l1l2_loss', l1l2_loss)
+#tf.scalar_summary('accuracy', accuracy)
+#merged_summaries = tf.merge_all_summaries()
 
 init_op = tf.initialize_all_variables()
 
@@ -332,7 +334,6 @@ for si, s_num in enumerate(subj_nums):
         # Train and predict
         #########################
         for ind in range(n_training_batches):
-
             batch_rest = get_training_batch(train_x_rest, batch_size / 2)
             batch_task = get_training_batch(train_x_task, batch_size / 2)
             batch_x = np.concatenate((batch_rest, batch_task))
@@ -340,14 +341,13 @@ for si, s_num in enumerate(subj_nums):
             batch_y = np.concatenate((np.zeros(batch_size / 2, dtype=int),
                                       np.ones(batch_size / 2, dtype=int)))
 
-            feed_dict = {x_data: batch_x,
-                         y_: batch_y,
+            feed_dict = {x_data: batch_x, y_: batch_y,
                          l1l2_weights: [hp_set[1], hp_set[2]]}
 
-            # Save summaries for tensorboard every 10 steps
+            # Save summaries for tensorboard every batch
             _, acc = sess.run([train_op, accuracy], feed_dict)
 
-            if ind % test_freq == 0 or ind == n_training_batches - 1:
+            if (ind % test_freq == 0 and ind > 500) or ind == n_training_batches - 1:
                 test_feed_dict = {x_data: test_x, y_: test_y}
                 test_accuracies.append(accuracy.eval(session=sess,
                                                      feed_dict=test_feed_dict))
@@ -355,9 +355,9 @@ for si, s_num in enumerate(subj_nums):
 
         test_accuracies.sort(reverse=True)
         class_scores[si, hpi[0], hpi[1], hpi[2], hpi[3]] = \
-            np.mean(test_accuracies[:10])
+            np.mean(test_accuracies)
 
-        print '  Top 5 accuracies = %s' % str(test_accuracies[:5])
+        #print '  Top 5 accuracies = %s' % str(test_accuracies[:5])
 
         sess.close()
 
