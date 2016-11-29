@@ -38,8 +38,12 @@ SVM_P = config.SVM_PARAMS
 trial_start_samp = [120, 434]  # Rest, task trial start times in samples
 #trial_start_samp = [120, 120]  # Rest, task trial start times in samples
 
+# Define trial types wanted
+event_ids = dict(wronk_resting=['rest'],
+                 eric_voc=['M10_', 'M20_', 'S10_', 'S20_'])
+
 subj_nums = config.subj_nums
-#subj_nums = [17]
+subj_nums = [15]
 
 hyper_param_desc = '(Subjects), C_vals, gamma_vals, range(n_repeats), range(n_folds)'
 hyper_params = [SVM_P['C_range'], SVM_P['g_range'], range(SVM_P['n_repeats'])]
@@ -73,37 +77,48 @@ def load_data(num_exp):
             shuffle_add, exp_heading, num_exp))
 
         with open(load_file, 'rb') as pkl_obj:
-            data_list.append(cPickle.load(pkl_obj))
+            # Load file, subselect trials desired (from `event_ids`)
+            temp_obj = cPickle.load(pkl_obj)
+            if exp_heading == 'eric_voc':
+                event_nums = [temp_obj['event_id'][e_id]
+                              for e_id in event_ids[exp_heading]]
+                desired_trials = [row_i for row_i in range(len(temp_obj['events']))
+                                  if temp_obj['events'][row_i, -1] in event_nums]
+
+                temp_obj['conn_data'][0] = temp_obj['conn_data'][0][desired_trials]
+                temp_obj['choosen_trial_ids'] = [temp_obj['events'][row_i, -1]
+                                                 for row_i in desired_trials]
+            data_list.append(temp_obj)
 
     assert len(data_list) is 2, "Both datasets not loaded"
 
     ######################
     # Create trials
     ######################
-    data_rest, n_feat_rest = clean_data(data_list[0]['conn_data'][0], 'wronk_resting')
-    data_task, n_feat_task = clean_data(data_list[1]['conn_data'][0], 'eric_voc')
+    data_rest, n_feat_rest = clean_data(data_list[0]['conn_data'][0], 'wronk_resting', event_ids['wronk_resting'])
+    data_task, n_feat_task = clean_data(data_list[1]['conn_data'][0], 'eric_voc', event_ids['eric_voc'])
     assert n_feat_rest == n_feat_task, "n_features doesn't match in rest/task"
 
     return data_rest, data_task
 
 
-def clean_data(data, mode):
+def clean_data(data, mode, event_ids):
     """Helper to reshape and normalize data"""
 
     # XXX Looked good when double checking data reshaping
     if mode == 'wronk_resting':
-        trial_images = cut_trials_rest(data)
+        cut_trials = cut_trials_rest(data)
     elif mode == 'eric_voc':
-        trial_images = cut_trials_task(data)
+        cut_trials = cut_trials_task(data)
     else:
         raise RuntimeError
 
-    n_pairs = trial_images.shape[1]
-    n_freqs = trial_images.shape[2]
+    n_pairs = cut_trials.shape[1]
+    n_freqs = cut_trials.shape[2]
     n_feat = n_pairs * n_freqs * trial_len
 
     # Roll axis so frequencies will be grouped together after reshape
-    trial_vecs = np.rollaxis(trial_images, 2, 1)
+    trial_vecs = np.rollaxis(cut_trials, 2, 1)
     # Reshape trials into 1D vectors and normalize
     trial_vecs = trial_vecs.reshape(trial_vecs.shape[0], -1,
                                     trial_vecs.shape[3])
@@ -206,8 +221,8 @@ for si, s_num in enumerate(subj_nums):
     for hpi, hp_set in zip(list(product(*hyper_param_inds)),
                            list(product(*hyper_params))):
 
-        print 'Subj: %i/%i, Hyper param set: %s' % (si, len(subj_nums) - 1,
-                                                    str(hpi))
+        print 'Subj: %i of %i, Hyper param set: %s' % (si + 1, len(subj_nums),
+                                                       str(hpi))
 
         # Randomize and equalize subject data
         trial_data, y_labels = get_equalized_data(all_data_rest, all_data_task)
