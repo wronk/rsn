@@ -9,13 +9,13 @@ import numpy as np
 
 # TODO: check labels for each subject, not all have the same number of
 # divisions
-# XXX: Could test both left and right hemispheres instead of just one
+# TODO: Double check that bounced 1 triggers for 019 were fixed
 
 # 019 had bounced 1 triggers in original experiment.
 # 020 had bad pupillometry, and the first run had a TTL issue
 # 007 had bad pupillometry; All epochs rejected
 # 022, 004 had droopy pupillometry
-subj_nums = [15, 17, 19, 23, 31, 32, 34, 38]
+subj_nums = [15, 17, 19, 23, 31, 32, 34, 38] # 26, 36, 37
 inv_lambda = 1 / 9.
 
 # Divisions on fsaverage
@@ -65,9 +65,18 @@ config_conn_params = dict(conn_pairs=(np.array([3, 3, 3, 5, 10, 10, 10, 12]),
                           n_jobs=6,
                           verbose=True)
 
+# Support Vector Machine parameters
 SVM_PARAMS = dict(C_range=[10. ** x for x in range(-6, 4)],
                   g_range=[10. ** x for x in range(-6, 3)],
-                  n_folds=5,
                   kernel='rbf',
+                  n_folds=5,
                   n_repeats=5,
-                  cache_size=4096)  # Cache size for SVM training
+                  cache_size=4096)
+
+
+# Random forest parameters
+RF_PARAMS = dict(n_est_range=[10, 20, 50, 100, 1000],
+                 max_feat_range=[20, 50, 100, 200, 500, 1000, 2000, 5000, 10000],
+                 n_folds=5,
+                 n_repeats=5,
+                 n_jobs=-1)
