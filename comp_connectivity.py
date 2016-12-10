@@ -27,13 +27,14 @@ from mne.time_frequency.tfr import _compute_tfr
 from pandas import rolling_corr
 
 import config
-from config import config_conn_methods, config_conn_params
+from config import config_proc_methods, config_conn_params
+from comp_fun import tfr_split
 
 ################
 # Define globals
 ################
-save_data = True  # Whether or not to pickle data
-shuffle_data = True  # Whether or not to shuffle data in time (as a control)
+save_data = False  # Whether or not to pickle data
+shuffle_data = False  # Whether or not to shuffle data in time (as a control)
 
 struct_dir = os.environ['SUBJECTS_DIR']
 data_head = op.join(os.environ['CODE_ROOT'])
@@ -42,13 +43,12 @@ data_head = op.join(os.environ['CODE_ROOT'])
 #exp_heading = 'wronk_resting'
 exp_heading = 'eric_voc'
 
-subj_nums = [str(num) for num in config.subj_nums]
-#subj_nums = ['15', '17']
+subj_nums = config.subj_nums
 inv_lam = config.inv_lambda
 
-conn_methods = config_conn_methods
+proc_methods = config_proc_methods
 conn_params = config_conn_params
-conn_params.update(dict(subj_nums=['0%s' % s_num for s_num in subj_nums]))
+conn_params.update(dict(subj_nums=['%03i' % s_num for s_num in subj_nums]))
 
 
 ##################
@@ -75,6 +75,7 @@ def get_lab_list(conn_params, s_name, src):
     return lab_list, lab_vert_list
 
 
+'''
 def tfr_split(label_activity):
     """Helper to calculate wavelet power in batches instead of all at once
 
@@ -100,6 +101,7 @@ def tfr_split(label_activity):
         power_arr[bi1:bi2, :, :, :] = batch
 
     return power_arr
+'''
 
 
 def calc_corr(wavelet_ts, conn_params, mode):
@@ -146,7 +148,6 @@ if exp_heading == 'wronk_resting':
     data_dir = op.join(data_head, 'rsn_data')
 elif exp_heading == 'eric_voc':
     data_dir = op.join(data_head, 'voc_data')
-    trial_types = ['M10_', 'M20_', 'S10_', 'S20_']
 else:
     raise RuntimeError('Incorrect experimental heading')
 
@@ -157,8 +158,8 @@ print '\nShuffle data: ' + str(shuffle_data)
 print 'Subjects: ' + str(subj_nums) + '\n'
 
 for s_num in subj_nums:
-    num_exp = '0%s' % s_num
-    s_name = 'AKCLEE_1' + s_num
+    num_exp = '%03i' % s_num
+    s_name = 'AKCLEE_1%02i' % s_num
 
     print '\n%s\nProcessing: %s\n' % ('=' * 40, s_name)
     print '\tLoading epo, inv, src, labels'
@@ -181,10 +182,9 @@ for s_num in subj_nums:
 
     # Subselect only vocoder trials (and throw away visual control trials)
     if exp_heading == 'eric_voc':
-        epo = epo[trial_types]
         epo.crop(None, 5.2)  # Crop to end at last stimulus letter
 
-    # Randomly (and independently) shuffle time axis of epochs data
+    # Randomly (and independently) shuffle time axis of each epoch data trial
     if shuffle_data:
         print '\tShuffling data'
         for t_i in range(epo._data.shape[0]):
@@ -194,15 +194,14 @@ for s_num in subj_nums:
     print '\n\tLoading RSN label info'
     # Get list of labels and vertices
     lab_list, lab_verts = get_lab_list(conn_params, s_name, src)
-    lab_verts_restricted = np.intersect1d(lab_verts, src[0]['vertno'])
-    lab_verts_restricted.sort()
-
-    summed_label = mne.Label(lab_verts_restricted, hemi='lh',
-                             name='RSNs_summed', subject=s_name)
 
     print '\n\tComputing STCs'
     stc_list = apply_inv(epo, inv, lambda2=inv_lam, method='MNE')
+    #lab_verts_restricted = np.intersect1d(lab_verts, src[0]['vertno'])
+    #lab_verts_restricted.sort()
     # XXX downstream problems when trying to use only labels of interest eltc
+    #summed_label = mne.Label(lab_verts_restricted, hemi='lh',
+    #                         name='RSNs_summed', subject=s_name)
     # requires that n_vertices match between src and stc
     #stc_list = apply_inv(epo, inv, lambda2=inv_lam, label=summed_label,
     #                     method='MNE')
@@ -218,11 +217,13 @@ for s_num in subj_nums:
     print '\tComputing connectivity'
     conn_data = []
     power_data = []
-    for conn_dict in conn_params['conn_methods']:
+    for conn_dict in conn_params['proc_methods']:
         # Sliding correlation of BLP
         # Compute TFR of power bands
             # wavelet_ts is (n_stc, n_lab, n_freq, n_times)
-        wavelet_ts = tfr_split(label_activity)
+        conn_dict.update(sfreq=epo.info['sfreq'])
+        wavelet_ts = tfr_split(label_activity, conn_dict)
+
         corr_len = int(conn_dict['corr_wind'] * epo.info['sfreq'])
 
         if exp_heading == 'wronk_resting':
@@ -237,16 +238,14 @@ for s_num in subj_nums:
         elif exp_heading == 'eric_voc':
             blp_corr = calc_corr(wavelet_ts, conn_params, exp_heading)
 
-        # Store raw power data
-        #power_data.append(wavelet_ts)
-
-        conn_data.append(blp_corr)  # Store only connectivity traces
+        #power_data.append(wavelet_ts)  # Store raw power data
+        conn_data.append(blp_corr)  # Store connectivity traces
 
     ##############
     # Save Results
     ##############
-    print '\tSaving connectivity data'
     if save_data:
+        print '\tSaving connectivity data'
 
         # Check if save directory exists (and create it if necessary)
         save_dir = op.join(data_dir, '%s_connectivity' % (exp_heading))
@@ -264,5 +263,7 @@ for s_num in subj_nums:
             results_to_save['conn_data_shape'] = \
                 'n_trials, n_label_pairs, n_freqs, n_times'
             results_to_save['sfreq'] = epo.info['sfreq']
+            results_to_save['event_id'] = epo.event_id
+            results_to_save['events'] = epo.events
 
             cPickle.dump(results_to_save, pkl_obj)
