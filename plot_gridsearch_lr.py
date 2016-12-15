@@ -45,8 +45,6 @@ print 'Hyper param size: %s' % str(result_dict['class_scores'].shape)
 # Average over repeats
 cls_arr = np.mean(result_dict['class_scores'], -1) * 100.
 
-# Roll so order is (subj, batch, l1, l2)
-#cls_arr = np.rollaxis(cls_arr, 3, 1)  # Corrected in new `classify_lr` script
 cls_shape = cls_arr.shape
 
 hyp_p = result_dict['hyper_params']

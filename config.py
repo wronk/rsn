@@ -15,6 +15,8 @@ import numpy as np
 # 020 had bad pupillometry, and the first run had a TTL issue
 # 007 had bad pupillometry; All epochs rejected
 # 022, 004 had droopy pupillometry
+# 017, 019, 032, 034, 036 were excluded for behavioral performance in original
+#      vocoder experiment
 subj_nums = [15, 17, 19, 23, 31, 32, 34, 38] # 26, 36, 37
 inv_lambda = 1 / 9.
 
@@ -51,15 +53,15 @@ common_params = dict(mode='cwt_morlet',
                      n_cycles=3,
                      corr_wind=0.5)  # seconds
 
-config_conn_methods = [dict(method='windowed_power_corr')]
+config_proc_methods = [dict(method='windowed_power_corr')]
 
-for adict in config_conn_methods:
+for adict in config_proc_methods:
     adict.update(common_params)
 
 # conn_pairs should index into RSN divisions on fsaverage
 config_conn_params = dict(conn_pairs=(np.array([3, 3, 3, 5, 10, 10, 10, 12]),
                                       np.array([0, 1, 2, 6, 7, 8, 9, 13])),
-                          conn_methods=config_conn_methods,
+                          proc_methods=config_proc_methods,
                           rsn_labels=rsn_labels,
                           mean_mode='mean_flip',
                           n_jobs=6,
@@ -75,8 +77,8 @@ SVM_PARAMS = dict(C_range=[10. ** x for x in range(-6, 4)],
 
 
 # Random forest parameters
-RF_PARAMS = dict(n_est_range=[10, 20, 50, 100, 1000],
-                 max_feat_range=[20, 50, 100, 200, 500, 1000, 2000, 5000, 10000],
+RF_PARAMS = dict(n_est_range=[50, 100, 1000, 2000, 5000, 10000],
+                 max_feat_range=10 ** np.arange(1, 7),
                  n_folds=5,
                  n_repeats=5,
                  n_jobs=-1)

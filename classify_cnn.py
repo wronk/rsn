@@ -4,6 +4,9 @@ classify_cnn.py
 @author: wronk
 
 Classify whether subject was resting or doing task using DL
+
+TODO: 1) Feed raw BLP data. 2) Randomly sample overlapping windows to boost
+      data. 3) 1D conv. in time. 4) Determine best params to optimize over
 """
 
 import os

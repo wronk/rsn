@@ -19,7 +19,6 @@ from sklearn.ensemble import RandomForestClassifier as RFC
 from sklearn.cross_validation import StratifiedKFold
 
 import config
-from config import config_conn_methods, config_conn_params
 import cPickle
 
 ################
