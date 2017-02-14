@@ -5,6 +5,7 @@ comp_fun.py
 
 Various extra helper functions
 """
+import os
 import numpy as np
 
 from mne.time_frequency.tfr import _compute_tfr
@@ -35,3 +36,9 @@ def tfr_split(data, processing_params):
         power_arr[bi1:bi2, :, :, :] = batch
 
     return power_arr
+
+
+def check_and_create_dir(fold):
+    """If directory doesn't exist, create it"""
+    if not os.path.exists(fold):
+        os.makedirs(fold)
