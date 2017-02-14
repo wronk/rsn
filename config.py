@@ -18,16 +18,54 @@ import numpy as np
 # 017, 019, 032, 034, 036 were excluded for behavioral performance in original
 #      vocoder experiment
 subj_nums = [15, 17, 19, 23, 31, 32, 34, 38] # 26, 36, 37
+
+###############################################################################
+# Human Connectome Project
+subj_nums_hcp = [105923, 106521, 108323]
+hcp_path = '/media/Toshiba/Code/hcp_data'
+
+hcp_subj_no_restin = [104012, 125525, 151526, 182840, 200109, 500222]
+hcp_subj_no_motor = [100307, 102816, 111514, 112920, 116524, 146129, 149741,
+                     154532, 158136, 166438, 172029, 174841, 175540, 179245,
+                     181232, 182840, 187547, 195041, 214524, 223929, 233326,
+                     248339, 352132, 352738, 433839, 512835, 555348, 665254,
+                     715950, 825048, 872764, 877168, 917255, 990366]
+hcp_subj_no_wm = [116524, 153732, 154532, 174841, 179245, 181232, 187547,
+                  221319, 233326, 287248, 352132, 559053]
+hcp_subj_no_storyM = [116524, 125525, 154532, 174841, 179245, 181232, 189349,
+                      191841, 250427, 352132, 352738, 500222, 912447]
+hcp_subj_remove = list(set(hcp_subj_no_restin + hcp_subj_no_motor +
+                           hcp_subj_no_wm + hcp_subj_no_storyM))
+
 inv_lambda = 1 / 9.
+
+# Example from mne-hcp
+#task_params_working_memory = dict(tmin=-1.5, tmax=2.5, decim=4,
+#                                  event_id=dict(face=1), baseline=(-0.5, 0),
+#                                  runs=range(2))
+
+# Not sure about decim or event_ids
+task_params_motor = dict(tmin=-1.2, tmax=1.2, decim=4, baseline=(-0.3, 0),
+                         runs=range(2), event_id=dict(LH=1, RH=1, LF=1, RF=1))
+
+#task_params_rest = dict(tmin=-1.5, tmax=2.5, decim=4, event_id=dict(face=1),
+#                        baseline=(-0.5, 0), runs=range(3))
+
+###############################################################################
+# In Yeo, 2011 (fc-fMRI), strongest DMN connections seem to be PCC-TPJ,
+#    and PCC-MPFC. Then TPJ-STS, and PCC-STS
+
+# In Yeo, 2011 (fc-fMRI), strongest DAN connections seem to be
+#    FEF-IPS/SPL7A, FEF-aMT+, aMT+/SPL7A,
 
 # Divisions on fsaverage
 # 7 div1, ind0: MPFC (Medial frontal region)
 # 7 div2, ind1: STS (Superior temporal sulcus)
 # 7 div3, ind2: PCC, pCun (Posterior cing. cort., preCuneus)
 # 7 div4, ind3: TPJ, (temporoparietal junction) or angular gyrus(?)
-# 7 div5, ind4: XXX Name? Small region on medial/ventral side of temporal lobe
+# 7 div5, ind4: PHC, Parahippocampal cortex
 
-# 7 div1, ind5: MT, SPL7A, etc. (Large region)
+# 7 div1, ind5: aMT+, SPL7A, etc. (Large region)
 # 7 div2, ind6: FEF, (frontal eye field)
 
 # Right half
@@ -35,9 +73,10 @@ inv_lambda = 1 / 9.
 # 7 div2, ind8: STS (Superior temporal sulcus)
 # 7 div3, ind9: PCC, pCun (Posterior cing. cort., preCuneus)
 # 7 div4, ind10: TPJ, (temporoparietal junction) or angular gyrus(?)
-# 7 div5, ind11: XXX Name? Small region on medial/ventral side of temporal lobe
+# 7 div5, ind11: PHC, Parahippocampal cortex
 
-# 7 div1, ind12: MT, SPL7A, etc. (Large region)
+
+# 7 div1, ind12: aMT+, SPL7A, etc. (Large region)
 # 7 div2, ind13: FEF, (frontal eye field)
 
 rsn_labels_lh = ['lh.7Networks_7_div%i.label' % i for i in range(1, 6)] + \
@@ -46,6 +85,7 @@ rsn_labels_rh = ['rh.7Networks_7_div%i.label' % i for i in range(1, 6)] + \
     ['rh.7Networks_3_div%i.label' % k for k in range(1, 3)]
 rsn_labels = rsn_labels_lh + rsn_labels_rh
 
+###############################################################################
 # Define processing parameters
 # In preprocessing, frequency cutoff at 55 Hz
 common_params = dict(mode='cwt_morlet',
