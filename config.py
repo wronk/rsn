@@ -44,12 +44,16 @@ inv_lambda = 1 / 9.
 #                                  event_id=dict(face=1), baseline=(-0.5, 0),
 #                                  runs=range(2))
 
-# Not sure about decim or event_ids
-task_params_motor = dict(tmin=-1.2, tmax=1.2, decim=4, baseline=(-0.3, 0),
-                         runs=range(2), event_id=dict(LH=1, RH=1, LF=1, RF=1))
+# XXX Double check decim
+# Event ids pulled from data info
+# Cue on from 0-0.15 sec, movement follows cue
+motor_params = dict(tmin=0.15, tmax=1.15, decim=4, runs=range(2),
+                    event_id=dict(LH=1, LF=2, RH=4, RF=5),
+                    time_samp_col=3, stim_code_col=1)
 
-#task_params_rest = dict(tmin=-1.5, tmax=2.5, decim=4, event_id=dict(face=1),
-#                        baseline=(-0.5, 0), runs=range(3))
+# Event ids arbitrarily set to 1, events constructed during epo construction
+rest_params = dict(tmin=0., tmax=1., decim=4, event_id=dict(rest=1),
+                   runs=range(3))
 
 ###############################################################################
 # In Yeo, 2011 (fc-fMRI), strongest DMN connections seem to be PCC-TPJ,
@@ -90,8 +94,10 @@ rsn_labels = rsn_labels_lh + rsn_labels_rh
 # In preprocessing, frequency cutoff at 55 Hz
 common_params = dict(mode='cwt_morlet',
                      cwt_frequencies=np.array([10, 12, 16, 20, 24]),
-                     n_cycles=3,
-                     corr_wind=0.5)  # seconds
+                     n_cycles=5,
+                     corr_wind=0.5,  # seconds
+                     post_decim=10,
+                     n_jobs=6)
 
 config_proc_methods = [dict(method='windowed_power_corr')]
 
