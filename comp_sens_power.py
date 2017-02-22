@@ -27,7 +27,6 @@ exp_types = ['motor', 'rest']
 
 struct_dir = os.environ['SUBJECTS_DIR']
 dirs = cf.subj_nums_hcp
-dirs = list(set(dirs) - set(cf.hcp_subj_remove))
 dirs = [str(temp_d) for temp_d in dirs]
 dirs = dirs[0:1]
 
@@ -73,15 +72,14 @@ for (s_num, exp_type, shuffle_data) in product(dirs, exp_types, shuffles):
         save_dir = op.join(hcp_path, s_num, 'sensor_power')
         check_and_create_dir(save_dir)
 
-        # Save results as pkl file
+        # Save results as pkl and npy files
         shuf_addition = '_shuffled' if shuffle_data else ''
-        save_file = op.join(save_dir, 'sens_power_%s%s.pkl' % (
+        save_file = op.join(save_dir, 'sens_power_%s%s' % (
             exp_type, shuf_addition))
         print('\t' + save_file)
 
-        with open(save_file, 'wb') as pkl_obj:
+        with open(save_file + '.pkl', 'wb') as pkl_obj:
             results_to_save = deepcopy(common_params)
-            results_to_save['power_data'] = wavelet_ts
             results_to_save['power_data_shape'] = \
                 'n_trials, n_chan, n_freqs, n_times'
             results_to_save['sfreq'] = epo.info['sfreq']
@@ -89,4 +87,8 @@ for (s_num, exp_type, shuffle_data) in product(dirs, exp_types, shuffles):
             results_to_save['events'] = epo.events
 
             cPickle.dump(results_to_save, pkl_obj)
+
+        with open(save_file + '.npy', 'wb') as arr_obj:
+            np.save(arr_obj, wavelet_ts)
+
         print('Data saved.')
