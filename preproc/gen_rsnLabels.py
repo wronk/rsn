@@ -11,6 +11,7 @@ import os.path as op
 from surfer import Brain
 import mne
 from copy import deepcopy
+import config
 
 # Whether or not to save divided labels for fsaverage
 save_fs_divs = False
@@ -25,21 +26,12 @@ hemi = 'lh'
 surface = 'inflated'
 views = ['lat']
 
-'''
-nums = ['101', '102', '103', '104', '105', '106', '107', '108', '109', '110',
-        '113', '114', '115', '118', '119', '120', '121', '122', '123', '124',
-        '125', '126', '127', '128', '129', '130', '131', '132', '133', '134',
-        '135', '136', '137', '138', '139']
-nums = ['117']
-subject_list = ['AKCLEE_' + num for num in nums]
-'''
-
 hcp_path = '/media/Toshiba/Code/hcp_data'
 new_subjects_dir = op.join(hcp_path, 'anatomy')
 # Get all subject ID numbers
-subject_list = [d for d in os.listdir(new_subjects_dir)
-                if len(d) is 6 and os.path.isdir(op.join(hcp_path, d))]
-subject_list = ['100307']
+#subject_list = [d for d in os.listdir(new_subjects_dir)
+#                if len(d) is 6 and os.path.isdir(op.join(hcp_path, d))]
+subject_list = [str(num) for num in config.subj_num_hcp]
 
 vert_cutoff = 50  # Min number of vertices to designate a label
 n_smooth = 1
