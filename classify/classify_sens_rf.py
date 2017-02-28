@@ -28,10 +28,8 @@ from rsn.comp_fun import check_and_create_dir
 ################
 # Define globals
 ################
-use_shuffled = True  # Whether or not to load randomly shuffled data
+use_shuffled = False  # Whether or not to load randomly shuffled data
 save_data = True  # Whether or not to pickle classification results
-
-#trial_len = 241
 
 CLS_P = cf.RF_PARAMS
 shuffled_add = '_shuffled' if use_shuffled else ''
@@ -86,8 +84,12 @@ def load_data(s_num):
             '''
 
             # Swap channel/frequency dimensions and reshape
-            rolled_data = np.rollaxis(temp_data, 2, 1)
-            reshaped_data = rolled_data.reshape(rolled_data.shape[0], -1)
+            #import ipdb; ipdb.set_trace()
+
+            reshaped_data = np.mean(temp_data, axis=(-1)).reshape(temp_data.shape[0], -1)
+
+            #rolled_data = np.rollaxis(temp_data, 2, 1)
+            #reshaped_data = rolled_data.reshape(rolled_data.shape[0], -1)
 
             data_list.append(reshaped_data)
 
@@ -103,7 +105,7 @@ def get_equalized_data(trials_rest, trials_task):
 
     # Equalize test trial count
     min_trials = min([trials_rest.shape[0], trials_task.shape[0]])
-    min_trials = 100
+    min_trials = 200
 
     inds_rest = choice(range(trials_rest.shape[0]), min_trials, replace=False)
     inds_task = choice(range(trials_task.shape[0]), min_trials, replace=False)
@@ -120,7 +122,7 @@ def get_equalized_data(trials_rest, trials_task):
 ###########################################################
 # Loop through each subject; load sensor data; predict
 ###########################################################
-
+ss = StandardScaler()
 for si, s_num in enumerate(subj_nums):
     print('\nProcessing: %s\n%s\n' % (s_num, 40 * '='))
 
@@ -138,7 +140,6 @@ for si, s_num in enumerate(subj_nums):
 
         # Equalize subject data, and standardize to unit variance/zero mean
         trial_data, y_labels = get_equalized_data(all_data_rest, all_data_task)
-        trial_data = StandardScaler().fit_transform(trial_data)
 
         # Check for any nans in the new data slices
         if np.any(np.isnan(trial_data)) or np.any(np.isnan(y_labels)):
@@ -152,13 +153,16 @@ for si, s_num in enumerate(subj_nums):
 
         for ti, (train_idx, test_idx) in enumerate(cv_obj):
 
+            X_train = ss.fit_transform(trial_data[train_idx])
+            X_test = ss.transform(trial_data[test_idx])
+
             # Initialize classifier with params
             clf = RFC(n_estimators=hp_set[0], max_depth=hp_set[1],
                       n_jobs=CLS_P['n_jobs'])
 
             # Train and test classifier, save score
-            clf.fit(trial_data[train_idx], y_labels[train_idx])
-            temp_score = clf.score(trial_data[test_idx], y_labels[test_idx])
+            clf.fit(X_train, y_labels[train_idx])
+            temp_score = clf.score(X_test, y_labels[test_idx])
             class_scores[hpi[0], hpi[1], hpi[2], ti] = temp_score
 
             print 'Test accuracy on CV %i: %0.2f' % (ti, temp_score)
@@ -179,3 +183,4 @@ for si, s_num in enumerate(subj_nums):
             cPickle.dump(save_dict, pkl_file)
 
 print 'Finished processing @ ' + strftime("%m/%d %H:%M:%S")
+print '\nFinal Scores:\n' + str(class_scores.mean((-1, -2)))

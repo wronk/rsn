@@ -21,6 +21,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 from sklearn.cross_validation import StratifiedKFold
 
+from mne.decoding import LinearModel
+
 from rsn import config as cf
 from rsn.config import hcp_path
 from rsn.comp_fun import check_and_create_dir
@@ -28,10 +30,8 @@ from rsn.comp_fun import check_and_create_dir
 ################
 # Define globals
 ################
-use_shuffled = True  # Whether or not to load randomly shuffled data
+use_shuffled = False  # Whether or not to load randomly shuffled data
 save_data = True  # Whether or not to pickle classification results
-
-#trial_len = 241
 
 SVM_P = cf.SVM_PARAMS
 shuffled_add = '_shuffled' if use_shuffled else ''
@@ -85,9 +85,13 @@ def load_data(s_num):
                                                  for row_i in desired_trials]
             '''
 
+            #import ipdb; ipdb.set_trace()
+            # Average power over 1 sec interval
+            reshaped_data = np.mean(temp_data, axis=-1).reshape(temp_data.shape[0], -1)
+
             # Swap channel/frequency dimensions and reshape
-            rolled_data = np.rollaxis(temp_data, 2, 1)
-            reshaped_data = rolled_data.reshape(rolled_data.shape[0], -1)
+            #rolled_data = np.rollaxis(temp_data, 2, 1)
+            #reshaped_data = rolled_data.reshape(rolled_data.shape[0], -1)
 
             data_list.append(reshaped_data)
 
@@ -112,7 +116,7 @@ def get_equalized_data(trials_rest, trials_task):
                                 trials_task[inds_task, :]))
 
     # Create matching labels
-    y_labels = np.concatenate((np.zeros(min_trials), np.ones(min_trials)))
+    y_labels = np.concatenate((-1 * np.ones(min_trials), np.ones(min_trials)))
 
     return trials_eq, y_labels
 
@@ -120,7 +124,7 @@ def get_equalized_data(trials_rest, trials_task):
 ###########################################################
 # Loop through each subject; load sensor data; predict
 ###########################################################
-
+ss = StandardScaler()
 for si, s_num in enumerate(subj_nums):
     print('\nProcessing: %s\n%s\n' % (s_num, 40 * '='))
 
@@ -131,14 +135,13 @@ for si, s_num in enumerate(subj_nums):
     all_data_rest, all_data_task = load_data(s_num)
     print('\nData loaded.')
 
+    # Equalize subject data, and standardize to unit variance/zero mean
+    trial_data, y_labels = get_equalized_data(all_data_rest, all_data_task)
+
     for hpi, hp_set in zip(list(product(*hyper_param_inds)),
                            list(product(*hyper_params))):
         print('Subj: %i of %i, Hyper param set: %s' %
               (si + 1, len(subj_nums), str(hpi)))
-
-        # Equalize subject data, and standardize to unit variance/zero mean
-        trial_data, y_labels = get_equalized_data(all_data_rest, all_data_task)
-        trial_data = StandardScaler().fit_transform(trial_data)
 
         # Check for any nans in the new data slices
         if np.any(np.isnan(trial_data)) or np.any(np.isnan(y_labels)):
@@ -153,12 +156,17 @@ for si, s_num in enumerate(subj_nums):
         for ti, (train_idx, test_idx) in enumerate(cv_obj):
 
             # Initialize classifier with params
-            clf = SVC(kernel=SVM_P['kernel'], C=hp_set[0], gamma=hp_set[1],
-                      cache_size=SVM_P['cache_size'])
+            # XXX: kernel must be 'linear'
+            clf = LinearModel(SVC(kernel=SVM_P['kernel'], C=hp_set[0],
+                                  gamma=hp_set[1],
+                                  cache_size=SVM_P['cache_size']))
+
+            X_train = ss.fit_transform(trial_data[train_idx])
+            X_test = ss.transform(trial_data[test_idx])
 
             # Train and test classifier, save score
-            clf.fit(trial_data[train_idx], y_labels[train_idx])
-            temp_score = clf.score(trial_data[test_idx], y_labels[test_idx])
+            clf.fit(X_train, y_labels[train_idx])
+            temp_score = clf.score(X_test, y_labels[test_idx])
             class_scores[hpi[0], hpi[1], hpi[2], ti] = temp_score
 
             print 'Test accuracy on CV %i: %0.2f' % (ti, temp_score)
@@ -179,3 +187,4 @@ for si, s_num in enumerate(subj_nums):
             cPickle.dump(save_dict, pkl_file)
 
 print 'Finished processing @ ' + strftime("%m/%d %H:%M:%S")
+print '\nFinal Scores:\n' + str(class_scores.mean((-1, -2)))
