@@ -15,14 +15,15 @@ import numpy as np
 
 import config as cf
 from config import hcp_path, common_params
-from comp_fun import tfr_split, get_concat_epos, check_and_create_dir
+from comp_fun import (tfr_split, get_concat_epos, check_and_create_dir,
+                      shuffle_epo)
 
 ################
 # Define globals
 ################
 save_data = True  # Whether or not to pickle data
 
-shuffles = [True, False]  # Whether or not to shuffle data in time (as a control)
+shuffles = [False, True]  # Whether or not to shuffle data in time (as a control)
 exp_types = ['motor', 'rest']
 
 struct_dir = os.environ['SUBJECTS_DIR']
@@ -41,14 +42,10 @@ for (s_num, exp_type, shuffle_data) in product(dirs, exp_types, shuffles):
 
     # Load Epochs
     epo = get_concat_epos(s_num, exp_type)
-    epo.pick_types(meg=True, eeg=False)
 
     # Randomly (and independently) shuffle time axis of each epoch data trial
     if shuffle_data:
-        print('\tShuffling data')
-        for t_i in range(epo._data.shape[0]):
-            for c_i in range(epo._data.shape[1]):
-                epo._data[t_i, c_i, :] = epo._data[t_i, c_i, np.random.permutation(epo._data.shape[2])]
+        epo = shuffle_epo(epo)
 
     ###########################################################
     # Compute power at each sensor
@@ -60,13 +57,14 @@ for (s_num, exp_type, shuffle_data) in product(dirs, exp_types, shuffles):
 
     common_params.update(sfreq=epo.info['sfreq'])
     wavelet_ts = tfr_split(epo._data, common_params)
+    import ipdb; ipdb.set_trace()
     print('Wavelet shape: %s' % str(wavelet_ts.shape))
 
     ##############
     # Save Results
     ##############
     if save_data:
-        print('Saving power data:')
+        print('Saving sensor power data:')
 
         # Check if save directory exists (and create it if necessary)
         save_dir = op.join(hcp_path, s_num, 'sensor_power')
@@ -82,7 +80,6 @@ for (s_num, exp_type, shuffle_data) in product(dirs, exp_types, shuffles):
             results_to_save = deepcopy(common_params)
             results_to_save['power_data_shape'] = \
                 'n_trials, n_chan, n_freqs, n_times'
-            results_to_save['sfreq'] = epo.info['sfreq']
             results_to_save['event_id'] = epo.event_id
             results_to_save['events'] = epo.events
 
