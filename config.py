@@ -17,11 +17,11 @@ import numpy as np
 # 022, 004 had droopy pupillometry
 # 017, 019, 032, 034, 036 were excluded for behavioral performance in original
 #      vocoder experiment
-subj_nums = [15, 17, 19, 23, 31, 32, 34, 38] # 26, 36, 37
+
+#subj_nums = [15, 17, 19, 23, 31, 32, 34, 38]  # 26, 36, 37
 
 ###############################################################################
 # Human Connectome Project
-subj_nums_hcp = [105923, 106521, 108323]
 hcp_path = '/media/Toshiba/Code/hcp_data'
 
 hcp_subj_no_restin = [104012, 125525, 151526, 182840, 200109, 500222]
@@ -37,7 +37,14 @@ hcp_subj_no_storyM = [116524, 125525, 154532, 174841, 179245, 181232, 189349,
 hcp_subj_remove = list(set(hcp_subj_no_restin + hcp_subj_no_motor +
                            hcp_subj_no_wm + hcp_subj_no_storyM))
 
-inv_lambda = 1 / 9.
+subj_nums_hcp = [105923, 106521, 108323, 109123, 113922,
+                 116726, 133019, 140117, 156334, 162935,
+                 164636, 169040, 175237, 177746, 185442,
+                 191033, 191437, 192641, 198653, 204521]
+subj_nums_hcp = sorted(list(set(subj_nums_hcp) - set(hcp_subj_remove)))
+subj_nums_hcp = [106521]  # Override for testing
+
+inv_lambda = 1 / 25.
 
 # Example from mne-hcp
 #task_params_working_memory = dict(tmin=-1.5, tmax=2.5, decim=4,
@@ -48,12 +55,18 @@ inv_lambda = 1 / 9.
 # Event ids pulled from data info
 # Cue on from 0-0.15 sec, movement follows cue
 motor_params = dict(tmin=0.15, tmax=1.15, decim=4, runs=range(2),
-                    event_id=dict(LH=1, LF=2, RH=4, RF=5),
-                    time_samp_col=3, stim_code_col=1)
+                    event_id=dict(LH=1, LF=2, RH=4, RF=5, fixate=6),
+                    time_samp_col=3, stim_code_col=1,
+                    baseline=(None, None))
 
 # Event ids arbitrarily set to 1, events constructed during epo construction
 rest_params = dict(tmin=0., tmax=1., decim=4, event_id=dict(rest=1),
-                   runs=range(3))
+                   runs=range(2), baseline=(None, None))
+
+filt_params = dict(lp=0.1, hp=60., method='fir', phase='linear',
+                   filter_length='2s')
+                   #iir_params=dict(order=4, ftype='butter', output='sos'))
+epo_reject = dict(mag=4e-12)
 
 ###############################################################################
 # In Yeo, 2011 (fc-fMRI), strongest DMN connections seem to be PCC-TPJ,
@@ -93,7 +106,8 @@ rsn_labels = rsn_labels_lh + rsn_labels_rh
 # Define processing parameters
 # In preprocessing, frequency cutoff at 55 Hz
 common_params = dict(mode='cwt_morlet',
-                     cwt_frequencies=np.array([10, 12, 16, 20, 24]),
+                     cwt_frequencies=np.array([10, 12, 16, 20, 24, 30]),
+                     #cwt_frequencies=np.array([12]),
                      n_cycles=5,
                      corr_wind=0.5,  # seconds
                      post_decim=10,
@@ -114,17 +128,19 @@ config_conn_params = dict(conn_pairs=(np.array([3, 3, 3, 5, 10, 10, 10, 12]),
                           verbose=True)
 
 # Support Vector Machine parameters
-SVM_PARAMS = dict(C_range=[10. ** x for x in range(-6, 4)],
-                  g_range=[10. ** x for x in range(-6, 3)],
-                  kernel='rbf',
+SVM_PARAMS = dict(C_range=[10. ** x for x in range(-4, 1)],
+                  g_range=[10. ** x for x in range(-6, 1)],
+#                  g_range=[10. ** x for x in [-7, -6, -5, -4, -3, -2]],
+                  kernel='linear',  # Take out 'LinearModel' if not using linear kernel anymore
                   n_folds=5,
-                  n_repeats=5,
-                  cache_size=4096)
+                  n_repeats=3,
+                  cache_size=8192)
 
 
 # Random forest parameters
-RF_PARAMS = dict(n_est_range=[50, 100, 1000, 2000, 5000, 10000],
-                 max_feat_range=10 ** np.arange(1, 7),
+#RF_PARAMS = dict(n_est_range=[50, 100, 1000, 2000, 5000, 10000],
+RF_PARAMS = dict(n_est_range=[50, 100, 1000, 2000],
+                 max_feat_range=10 ** np.arange(1, 6),
                  n_folds=5,
-                 n_repeats=5,
+                 n_repeats=3,
                  n_jobs=-1)
