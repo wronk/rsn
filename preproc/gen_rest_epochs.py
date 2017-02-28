@@ -14,18 +14,13 @@ import hcp
 from rsn import config as cf
 from rsn.config import hcp_path, rest_params
 from rsn.comp_fun import (check_and_create_dir, preproc_annot_filter,
-                          preproc_artifacts, preproc_epoch)
-
-stored_subjects_dir = '/media/Toshiba/MRI_Data/structurals'
-new_subjects_dir = op.join(hcp_path, 'anatomy')
-head_trans_dir = op.join(hcp_path, 'hcp-meg')
+                          preproc_gen_ssp, preproc_epoch)
 
 n_jobs = 6
 exp_type = 'rest'
 
 # Get all subject ID numbers, exclude missing rest/motor/story&math/working mem
 dirs = cf.subj_nums_hcp
-dirs = list(set(dirs) - set(cf.hcp_subj_remove))
 dirs = [str(temp_d) for temp_d in dirs]
 dirs = dirs[0:1]
 
@@ -53,14 +48,11 @@ for subj_fold in dirs:
 
         #################
         # Preprocess data
-        raw, annots = preproc_annot_filter(raw, hcp_params)
-
-        # Use ICA components to remove EOG ECG (Note: assumes bad chans removed
-        raw = preproc_artifacts(raw, hcp_params, annots)
+        raw, annots = preproc_annot_filter(subj_fold, raw, hcp_params)
 
         #################
         # Epoch data
-        epochs = preproc_epoch(subj_fold, run_index, raw, events,
+        epochs = preproc_epoch(subj_fold, raw, run_index, events,
                                exp_type=exp_type)
 
         #################
