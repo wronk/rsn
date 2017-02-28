@@ -1,5 +1,5 @@
 """
-preproc_hcp.py
+gen_anat_fwd_cov.py
 
 @author: wronk
 
@@ -23,12 +23,10 @@ n_jobs = 6
 
 # Get all subject ID numbers, exclude missing rest/motor/story&math/working mem
 dirs = cf.subj_nums_hcp
-dirs = list(set(dirs) - set(cf.hcp_subj_remove))
 dirs = [str(temp_d) for temp_d in dirs]
 
-
 for subj_fold in dirs:
-    if True:
+    if False:
         # Construct MNE-compatible anatomy
         subj_dir = op.join(hcp_path, subj_fold)
         hcp.make_mne_anatomy(subj_fold, subjects_dir=stored_subjects_dir,
@@ -38,14 +36,18 @@ for subj_fold in dirs:
     if True:
         # Construct fwd solution
         # Leaving defaults, so add_dist=True and uses rest data run_index=0
+        src_params = dict(subject='fsaverage', fname=None, spacing='ico5',
+                          n_jobs=6, surface='white', overwrite=True,
+                          subjects_dir=stored_subjects_dir, add_dist=True)
         src_outputs = hcp.anatomy.compute_forward_stack(
             subject=subj_fold,
             subjects_dir=stored_subjects_dir,
             hcp_path=hcp_path,
             recordings_path=head_trans_dir,
+            src_params=src_params,
             n_jobs=6)
 
-        # Save forward modeling information outputjs
+        # Save forward modeling information outputs
         #src_outputs['bem_sol'].save(op.join(stored_subjects_dir, subj_fold,
         #                                    'bem', '%s-bem-sol.fif'))
         src_fold = op.join(stored_subjects_dir, subj_fold, 'src')
@@ -68,7 +70,7 @@ for subj_fold in dirs:
 
         # apply ref channel correction, drop ref channels, and filter
         hcp.preprocessing.apply_ref_correction(raw_noise)
-        raw_noise.filter(0.50, None, method='iir',
+        raw_noise.filter(0.10, None, method='iir',
                          iir_params=dict(order=4, ftype='butter'),
                          n_jobs=n_jobs)
         raw_noise.filter(None, 60, method='iir',

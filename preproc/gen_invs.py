@@ -26,7 +26,6 @@ exp_type = 'motor'
 # Get all subject ID numbers, exclude missing rest/motor/story&math/working mem
 dirs = cf.subj_nums_hcp
 dirs = [str(temp_d) for temp_d in dirs]
-dirs = dirs[0:1]
 
 data_type = 'task_motor' if exp_type == 'motor' else 'rest'
 hcp_params = dict(hcp_path=hcp_path, data_type=data_type)
@@ -49,7 +48,7 @@ for subj_fold in dirs:
 
     epo_fname = op.join(hcp_path, subj_fold, 'epochs', '%s_%s_run0-epo.fif' %
                         (subj_fold, exp_type))
-    temp_epo = mne.read_epochs(epo_fname, proj=False, preload=False)
+    temp_epo = mne.read_epochs(epo_fname, preload=False)
 
     # Calculate inverse
     inv = mne.minimum_norm.make_inverse_operator(temp_epo.info, fwd,
@@ -60,4 +59,4 @@ for subj_fold in dirs:
 
     inv_fold = op.join(hcp_path, subj_fold, 'inverse')
     check_and_create_dir(inv_fold)
-    write_inv(op.join(inv_fold, '%s_%s-inv.fif' % subj_fold, exp_type), inv)
+    write_inv(op.join(inv_fold, '%s_%s-inv.fif' % (subj_fold, exp_type)), inv)
