@@ -11,14 +11,12 @@ import os.path as op
 from surfer import Brain
 import mne
 from copy import deepcopy
-import config
+from rsn import config
+import numpy as np
 
-# Whether or not to save divided labels for fsaverage
-save_fs_divs = False
-# whether or not to morph labels to all other subjects
-doMorph = True
-# Whether or not to plot brain
-doPlot = True
+save_fs_divs = False  # Whether or not to save divided labels for fsaverage
+doMorph = True  # whether or not to morph labels to all other subjects
+doPlot = False  # Whether or not to plot brain
 
 subjectDir = os.environ['SUBJECTS_DIR']
 modelSubj = 'fsaverage'
@@ -31,13 +29,14 @@ new_subjects_dir = op.join(hcp_path, 'anatomy')
 # Get all subject ID numbers
 #subject_list = [d for d in os.listdir(new_subjects_dir)
 #                if len(d) is 6 and os.path.isdir(op.join(hcp_path, d))]
-subject_list = [str(num) for num in config.subj_num_hcp]
+subject_list = [str(num) for num in config.subj_nums_hcp]
 
-vert_cutoff = 50  # Min number of vertices to designate a label
+vert_cutoff = 50  # Min number of vertices in fsaverage to designate a label
 n_smooth = 1
 
 #subject_list = ['AKCLEE_101']
 
+# 7Networks_2 cooresponds to motor
 # 7Networks_3 cooresponds to DAN
 # 7Networks_7 cooresponds to DMN
 
@@ -72,18 +71,30 @@ if save_fs_divs:
                                     label.name[:-3] + '.label')
             label.save(labelSavePath)
 
+########################################################
+# Morph labels
+########################################################
+# First get source spaces to obtain proper vertices
+src_vert_list = []
+for subject in subject_list:
+    print('Reading src space for %s' % subject)
+    fname_src = op.join(subjectDir, subject, 'src', 'subject-src.fif')
+    src = mne.read_source_spaces(fname_src)
+    src_vert_list.append([src[0]['vertno'], src[1]['vertno']])
+
 # Actually morph labels from fsaverage to other subjects
 if doMorph:
     print 'Morphing %i labels to %i subjects...\n' % (len(labels_to_morph),
                                                       len(subject_list))
-
-    for i, label in enumerate(labels_to_morph):
-        for subject in subject_list:
-            print '\n' + subject
+    for i, label_orig in enumerate(labels_to_morph):
+        for si, subject in enumerate(subject_list):
+            label = deepcopy(label_orig)  # Important to prevent double morphing
             label.values.fill(1.0)
             morphedLabel = label.morph(subject_from=modelSubj,
                                        subject_to=subject, smooth=n_smooth,
-                                       n_jobs=6)
+                                       grade=src_vert_list[si], n_jobs=6,
+                                       verbose=False)
+            print(morphedLabel)
             labelSavePath = op.join(subjectDir, subject, 'label',
                                     morphedLabel.name[:-3] + '.label')
             morphedLabel.save(labelSavePath)
