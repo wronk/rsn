@@ -1,8 +1,6 @@
 """
 gen_motor_epochs.py
 
-@author: wronk
-
 Script to loop over HCP subjects and compute motor epochs
 """
 
@@ -14,18 +12,18 @@ import hcp
 from rsn import config as cf
 from rsn.config import hcp_path, motor_params
 from rsn.comp_fun import (check_and_create_dir, preproc_annot_filter,
-                          preproc_gen_ssp, preproc_epoch)
+                          preproc_gen_ssp, preproc_epoch, scale_epo_data)
 
 n_jobs = 6
-exp_type = 'motor'
-trial_types = ['LH', 'RH', 'LF', 'RF', 'fixate']
+exp_type = 'task_motor'
+trial_types = ['LH', 'RH']#, 'LF', 'RF']
+#trial_types = ['fixate']
 
 # Get all subject ID numbers, exclude missing rest/motor/story&math/working mem
 dirs = cf.subj_nums_hcp
 dirs = [str(temp_d) for temp_d in dirs]
-dirs = dirs[0:1]
 
-hcp_params = dict(hcp_path=hcp_path, data_type='task_' + exp_type)
+hcp_params = dict(hcp_path=hcp_path, data_type=exp_type)
 
 for subj_fold in dirs:
     hcp_params['subject'] = subj_fold
@@ -73,22 +71,35 @@ for subj_fold in dirs:
 
         #################
         # Preprocess data
-        raw, annots = preproc_annot_filter(subj_fold, raw, hcp_params)
+        raw, annots = preproc_annot_filter(subj_fold, raw, hcp_params,
+                                           apply_ref_correction= motor_params['ref_correction'])
 
-        # Remove EOG/ECG
-        if run_index == 0 and exp_type == 'motor':
-            preproc_gen_ssp(subj_fold, raw, hcp_params, annots)
+        epochs, unit_scaler = preproc_epoch(subj_fold, raw, run_index, events,
+                                            exp_type, trial_types)
+        if motor_params['scale_epo']:
+            epochs = scale_epo_data(epochs, unit_scaler)
 
-        #################
-        # Epoch data
-        epochs = preproc_epoch(subj_fold, raw, run_index, events,
-                               exp_type='task_' + exp_type)
-        epochs = epochs[trial_types]
+        #############################
+        # Save epochs and unit scaler
+        if trial_types[0] == 'fixate':
+            save_fname = op.join(epo_fold, '%s_%s_run%i-epo' %
+                                 (subj_fold, 'rest', run_index))
+            plot_type = 'rest'
+        else:
+            save_fname = op.join(epo_fold, '%s_%s_run%i-epo' %
+                                 (subj_fold, 'motor', run_index))
+            plot_type = 'motor'
 
-        #################
-        # Save epochs
-        epo_fname = op.join(epo_fold, '%s_%s_run%i-epo.fif' %
-                            (subj_fold, exp_type, run_index))
-        epochs.save(epo_fname)
+        epochs.save(save_fname + '.fif')
+        np.save(save_fname + '_scale', unit_scaler)
+
+        hcp.preprocessing.map_ch_coords_to_mne(epochs)
+        #fig = epochs.plot_psd_topomap(vmin=-250, vmax=-230, cmap='viridis', n_jobs=6, show=False)
+        fig = epochs.plot_psd_topomap(vmin=0, vmax=21, cmap='viridis', n_jobs=6, show=False)
+        fig.savefig('/media/Toshiba/Code/hcp_data/%s/%s_epo_%i.png' % (subj_fold, plot_type, run_index))
+
+        fig = epochs.plot_psd(fmin=1, fmax=55, proj=False, n_jobs=6, show=False)
+        fig.gca().set_ylim([295, 315])
+        fig.savefig('/media/Toshiba/Code/hcp_data/%s/z_%s_epo_%i.png' % (subj_fold, plot_type, run_index))
 
         del raw, epochs
